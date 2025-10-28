@@ -1,0 +1,58 @@
+services:
+  # The license monitor with its health check
+  license-monitor:
+    build: ./license-monitor
+    container_name: license-monitor
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost/health.txt"]
+      interval: 10s
+      timeout: 5s
+      retries: 3
+    networks:
+      - superset-net
+
+  # A PostgreSQL database for Superset metadata
+  db:
+    image: postgres:14
+    container_name: db
+    environment:
+      - POSTGRES_DB=superset
+      - POSTGRES_USER=superset
+      - POSTGRES_PASSWORD=superset
+    volumes:
+      - db_data:/var/lib/postgresql/data
+    networks:
+      - superset-net
+
+  # A Redis cache for Superset
+  redis:
+    image: redis:7
+    container_name: redis
+    networks:
+      - superset-net
+
+  # The main Superset application service
+  superset:
+    build: ./superset
+    container_name: superset
+    ports:
+      - "8088:8088"
+    environment:
+      - SUPERSET_SECRET_KEY=1234567890
+      - SQLALCHEMY_DATABASE_URI=postgresql://superset:superset@db:5432/superset
+    depends_on:
+      db:
+        condition: service_started
+      redis:
+        condition: service_started
+      license-monitor:
+        condition: service_healthy
+    networks:
+      - superset-net
+
+networks:
+  superset-net:
+    driver: bridge
+
+volumes:
+  db_data:

@@ -1,58 +1,34 @@
+x-startup-wrapper:
+  &startup-wrapper
+    entrypoint: /startup-script/entrypoint.sh
+
 services:
   # The license monitor with its health check
-  license-monitor:
+  license:
     build: ./license-monitor
-    container_name: license-monitor
+    container_name: license
     healthcheck:
       test: ["CMD", "curl", "-f", "http://localhost/health.txt"]
       interval: 10s
       timeout: 5s
       retries: 3
     networks:
-      - superset-net
+      - startup-net
 
   # A PostgreSQL database for Superset metadata
-  db:
-    image: postgres:14
-    container_name: db
-    environment:
-      - POSTGRES_DB=superset
-      - POSTGRES_USER=superset
-      - POSTGRES_PASSWORD=superset
+  nginx:
+    <<: *startup-wrapper
+    image: nginx:1.25-alpine
+    container_name: nginx
     volumes:
-      - db_data:/var/lib/postgresql/data
+      - ./startup-script:/startup-script:ro
     networks:
-      - superset-net
-
-  # A Redis cache for Superset
-  redis:
-    image: redis:7
-    container_name: redis
-    networks:
-      - superset-net
-
-  # The main Superset application service
-  superset:
-    build: ./superset
-    container_name: superset
-    ports:
-      - "8088:8088"
-    environment:
-      - SUPERSET_SECRET_KEY=1234567890
-      - SQLALCHEMY_DATABASE_URI=postgresql://superset:superset@db:5432/superset
+      - startup-net
     depends_on:
-      db:
-        condition: service_started
-      redis:
-        condition: service_started
-      license-monitor:
+      license:
         condition: service_healthy
-    networks:
-      - superset-net
+    command: ["/docker-entrypoint.sh", "nginx", "-g", "daemon off;"]
 
 networks:
-  superset-net:
+  startup-net:
     driver: bridge
-
-volumes:
-  db_data:
